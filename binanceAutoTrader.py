@@ -18,23 +18,21 @@ ticker = "BTCUSDT"
 interval='1d'   # 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
 
 balance = 1000.0
-
-df = get_ohlcv(client)
-df['MA20'] = get_ma(df, 20)
-df['RSI'] = get_rsi(df, 14)
-df[['MACD', 'MACD Signal', 'MACD Oscillator']] = get_macd(df)
-df[['BB Middle', 'BB Upper', 'BB Lower']] = get_bb(df)
-df = df.dropna(axis=0)
-print(df)
-
+send_message("매매 시작! \n현재 잔고: " + get_balance())
 while True:
     try:
         now = datetime.datetime.now()
         if now.hour == 0 and now.minute == 0:
-            df = get_df()
-        if df['MACD Oscillator'][-1] > 0:
-            print()
-        send_message("매매 시작! \n현재 잔고: " + get_balance())
+            df = get_ohlcv(client)
+        if False:
+            order = client.futures_create_order(
+                symbol=ticker,  # 주문 종목
+                timeInForce='GTC',
+                type="LIMIT",   # LIMIT, MARKET
+                side='BUY',     # BUY, SELL
+                price=0.85,     # 주문 희망가
+                quantity=10     # 주문 수량
+            )
 
     except Exception as e:
         print(e)
