@@ -1,28 +1,59 @@
-import pyupbit
+from BinanceTrade import *
+from binance.client import Client
+import pandas as pd
 import numpy as np
+import requests
+import datetime
+import yaml
+import openpyxl
 
-# OHLCV(open, high, low, close, volume)로 당일 시가, 고가, 저가, 종가, 거래량에 대한 데이터
-df = pyupbit.get_ohlcv("KRW-BTC", count=7)
+with open('/Users/ho/Documents/config.yaml', encoding='UTF-8') as f:
+    _cfg = yaml.load(f, Loader=yaml.FullLoader)
+APP_KEY = _cfg['APP_KEY']
+APP_SECRET = _cfg['APP_SECRET']
+DISCORD_WEBHOOK_URL = _cfg['DISCORD_WEBHOOK_URL']
+client = Client(api_key=APP_KEY, api_secret=APP_SECRET)
 
-# 변동폭 * k 계산, (고가 - 저가) * k값
-df['range'] = (df['high'] - df['low']) * 0.5
+# 코인 설정
+ticker = "ETHUSDT"
+interval='30m'   # 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+df = get_ohlcv(client,ticker,interval)
 
-# target(매수가), range 컬럼을 한칸씩 밑으로 내림(.shift(1))
-df['target'] = df['open'] + df['range'].shift(1)
+# 초기 설정
+start_balance =100000.0 # 시작 자산
+cash = start_balance
+fee = 0.0005
+rate = 1
 
-# ror(수익률), np.where(조건문, 참일때 값, 거짓일때 값)
-df['ror'] = np.where(df['high'] > df['target'],
-                     df['close'] / df['target'],
-                     1)
+# 전략 설정
+bt = heikinashi_upswing_strategy(df,13,21)
+bt[['현금', '보유수량', '총 자산', '수익률']] = 0.0
 
-# 누적 곱 계산(cumprod) => 누적 수익률
-df['hpr'] = df['ror'].cumprod()
+quantity = 0
+bt.loc[0, '현금'] = cash
+bt.loc[0, '총 자산'] = cash
+for i in range(1, len(bt)):
+    price = df.loc[i, 'Close']
+    if bt.loc[i, 'Action'] == 'Buy':
+        buy_quantity = cash*rate / price * (1-fee)  # 매수수량 = 현금*비율 / 현재가*(1-수수료)
+        quantity += buy_quantity    # 수량 업데이트
+        cash -= cash*rate   # 현금 업데이트
+    elif bt.loc[i, 'Action'] == 'Sell':
+        sell_quantity = quantity*rate  # 매도수량 = 보유수량*비율
+        quantity -= sell_quantity   # 수량 업데이트 
+        cash += sell_quantity * price * (1-fee) # 현금 = 기존현금 + 매도수량 * 현재가 * (1-수수료)
+    bt.loc[i, '보유수량'] = quantity
+    bt.loc[i, '현금'] = cash
+    bt.loc[i, '총 자산'] = cash + (quantity*price)
+    bt.loc[i, '수익률'] = (bt.loc[i,'총 자산'] - start_balance) / start_balance
+bt['수익률'] *= 100
 
-# Draw Down 계산 (누적 최대 값과 현재 hpr 차이 / 누적 최대값 * 100)
-df['dd'] = (df['hpr'].cummax() - df['hpr']) / df['hpr'].cummax() * 100
+print("매수 횟수: ", len(bt[bt['Action']=='Buy']), "번")
+print("매도 횟수: ", len(bt[bt['Action']=='Sell']), "번")
+print("최고 수익률: ", round(max(bt['수익률']),3), "%")
+print("MDD: ", round(min(bt['수익률']),3), "%")
+print("최종 수익률: ", round(bt['수익률'].iloc[-1],3), "%")
 
-#MDD 계산
-print("MDD(%): ", df['dd'].max())
-
-#엑셀로 출력
-df.to_excel("dd.xlsx")
+# 엑셀로 출력
+now = datetime.datetime.now()
+bt.to_excel(f"BackTest[{now.strftime('%Y-%m-%d %H:%M:%S')}].xlsx")
