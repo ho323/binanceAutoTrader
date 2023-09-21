@@ -34,7 +34,7 @@ below=25
 above=50
 
 # 전략 설정
-bt = srp_strategy(df=df,change_percentage=change_percentage,below=below,above=above)
+bt = vwma_long_strategy(df=df,change_percentage=change_percentage,below=below,above=above)
 
 # 백테스트 시작
 bt['보유현금'] = 0.0
