@@ -14,6 +14,45 @@ DISCORD_WEBHOOK_URL = _cfg['DISCORD_WEBHOOK_URL']
 
 client = Client(api_key=APP_KEY, api_secret=APP_SECRET)
 
+# # 레버리지 변경
+# client.futures_change_leverage(
+#     symbol="BTCUSDT",
+#     leverage=3,
+# )
+
+# # 선물 마진 타입 변경
+# client.futures_change_margin_type(
+#     symbol="BTCUSDT",
+#     marginType="ISOLATED",  # ISOLATED, CROSSED
+# )
+
+# # 선물 잔고 조회
+# account = client.futures_account()
+# for i in account['assets']:
+#     if i['asset'] == 'USDT':
+#         print(i)
+# for i in account['positions']:
+#     if i['symbol'] == 'BTCUSDT':
+#         print(i)
+
+# # 주문 생성
+# try:
+#     client.futures_create_order(
+#         symbol="BTCUSDT",  # 주문 종목
+#         timeInForce='GTC',
+#         type="LIMIT",   # LIMIT, MARKET
+#         side='BUY',     # BUY, SELL
+#         price=20000,     # 주문 희망가
+#         quantity=1     # 주문 수량
+#     )
+# except Exception as e:
+#     print(e)
+
+# # 모든 주문 취소
+# client.futures_cancel_all_open_orders(
+#     symbol="BTCUSDT"
+# )
+
 ticker = "BTCUSDT"
 interval='1d'   # 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
 
