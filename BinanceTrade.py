@@ -255,9 +255,10 @@ def torres_strategy(df):
     """토레스 전략"""
     pass
 
-def srp_strategy(df, length=14, change_percentage=1.4, below=25, above=80):
+def vwma_long_strategy(df, length=14, change_percentage=1.4, below=25, above=80):
     """
-    SRP 전략
+    현물에서 유효한 전략
+    쌀 때 사서 비쌀 때 파는 컨셉 
     change_percentage: SRP %
     below, above: RMF 임계값
     
@@ -284,9 +285,8 @@ def srp_strategy(df, length=14, change_percentage=1.4, below=25, above=80):
 
     return df[['Time','Open','High','Low','Close','Volume','Action']]
 
-def srp_strategy_v2(data, rmf_threshold=30, std_dev=2, dca=-0.02, stl=-0.05, mtp=0.02):
+def srp_strategy(data, rmf_threshold=30, std_dev=2, dca=-0.02, stl=-0.05, mtp=0.02):
     """
-    SRP 전략 v2
     매수 조건: VWMA 밴드 하단 아래, RMF 입력한 지정값 아래
     매도 조건: VWMA 밴드 상단 위, RMF 입력한 지정값 위
     DCA 접근 방식: 1차, 2차, 3차 분할매수 후 전량매도 (분할매수 지점은 매수가 대비 -3% 지점)
