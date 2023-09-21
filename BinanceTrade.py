@@ -39,16 +39,18 @@ def get_ohlcv(client, ticker="BTCUSDT", interval="1d",limit=100):
     # df.set_index('Time', inplace=True)
     return df
 
-def get_all_ohlcv(symbol="BTCUSDT", interval="1d"):
+def get_all_ohlcv(symbol="BTCUSDT", interval="1d", start_date=datetime.datetime(2017,1,1), end_date=datetime.datetime.now()):
+    """
+    모든 OHLCV 읽기
+    interval: # 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+    """
     # Binance API endpoint URL
     url = "https://api.binance.com/api/v1/klines"
 
     # Convert start date to milliseconds (2016년 6월 1일)
-    start_date = datetime.datetime(2016, 6, 1)
     start_time = int(start_date.timestamp()) * 1000
 
     # Get the current date and time as the end date
-    end_date = datetime.datetime.now()
     end_time = int(end_date.timestamp()) * 1000
 
     params = {
@@ -150,6 +152,40 @@ def get_bb(df):
     x['BB Lower'] = x['BB Middle'] - 2 * std
     return x
 
+def get_change(source, length=None):
+    """
+    종가 입력
+    """
+    if length is None:
+        # length가 주어지지 않은 경우, 모든 종가의 변화량 계산
+        changes = [0] + [source[i] - source[i - 1] for i in range(1, len(source))]
+    else:
+        # length가 주어진 경우, 최근 length일 동안의 종가의 변화량 계산
+        if length >= len(source):
+            raise ValueError("length는 source 리스트의 길이보다 작아야 합니다.")
+        changes = [0 for _ in range(length)] + [
+            source[i] - source[i - length] for i in range(length, len(source))]
+    return changes
+
+def get_rma(source, length):
+    """
+    종가 입력
+    """
+    if length <= 0 or length > len(source):
+        raise ValueError("Invalid length value")
+
+    rma = [None] * len(source)
+
+    # Calculate the first RMA value as the simple moving average (SMA) of the first 'length' elements
+    sma = sum(source[:length]) / length
+    rma[length - 1] = sma
+
+    # Calculate RMA for the rest of the data
+    for i in range(length, len(source)):
+        rma[i] = (rma[i - 1] * (length - 1) + source[i]) / length
+
+    return rma
+
 def get_mfi(data, period=14):
     """MFI 계산"""
     typical_price = (data['High'] + data['Low'] + data['Close']) / 3
@@ -219,13 +255,46 @@ def torres_strategy(df):
     """토레스 전략"""
     pass
 
-def srp_strategy(data, rmf_threshold=30, dca_levels=[0.1,0.2,0.5], std_dev=2):
+def srp_strategy(df, length=14, change_percentage=1.4, below=25, above=80):
     """
     SRP 전략
+    change_percentage: SRP %
+    below, above: RMF 임계값
+    
+    매수 조건: VWMA 밴드 하단 아래, RMF 입력한 임계값 아래
+    매도 조건: VWMA 밴드 상단 위, RMF 입력한 임계값 위
+    """
+    length = 14
+    change_percentage = 1.4 # SRP %
+
+    core = get_vwma(df, length)
+    vwma_above = core * (1 + (change_percentage / 100))
+    vwma_below = core * (1 - (change_percentage / 100))
+
+    up = get_rma([max(change, 0) for change in get_change(df['Close'])], 7)
+    down = get_rma([min(change, 0)*-1 for change in get_change(df['Close'])], 7)
+    rsi = [None if down[i] is None else 100 if down[i] == 0 else 0 if up[i] == 0 else 100 - (100 / (1 + up[i] / down[i])) for i in range(len(up))]
+    mfi = get_mfi(df, 7)
+    rmf = [None if rsi[i] is None else abs((rsi[i] + mfi[i])/2) for i in range(len(rsi))]
+
+    df['RMF'] = rmf
+    df['Action'] = 'Stay'
+    df.loc[(df['Low'] <= vwma_below) & (df['RMF'] < below), 'Action'] = 'Long'
+    df.loc[(df['High'] >= vwma_above) & (df['RMF'] > above), 'Action'] = 'Short'
+
+    return df[['Time','Open','High','Low','Close','Volume','Action']]
+
+def srp_strategy_v2(data, rmf_threshold=30, std_dev=2, dca=-0.02, stl=-0.05, mtp=0.02):
+    """
+    SRP 전략 v2
     매수 조건: VWMA 밴드 하단 아래, RMF 입력한 지정값 아래
     매도 조건: VWMA 밴드 상단 위, RMF 입력한 지정값 위
-    DCA 접근 방식: 1차, 2차, 3차 분할매수 후 전량매도
+    DCA 접근 방식: 1차, 2차, 3차 분할매수 후 전량매도 (분할매수 지점은 매수가 대비 -3% 지점)
+    rmf_threshold: RMF 지정임계값
     std_dev: 표준 편차 값 (상단 및 하단 밴드의 폭을 결정)
+    dca: 추가매수시 직전 매수가 대비 수익률
+    stl: Stop Loss
+    mtp: Min Take Profit 매도시 최소 수익률    
     """
     data['VWMA'] = get_vwma(data)
     data['RMF'] = get_rmf(data)
@@ -234,23 +303,32 @@ def srp_strategy(data, rmf_threshold=30, dca_levels=[0.1,0.2,0.5], std_dev=2):
 
     actions = []
     dca_counter = 0  # DCA 수행 횟수
+    buy_price = None    # 직전 매수가
+    ror = 0
     for index, row in data.iterrows():
         price = row['Close']
         vwma = row['VWMA']
         rmf = row['RMF']
         rmf_upper = row['Upper_Band']
         rmf_lower = row['Lower_Band']
+        ror = (price-buy_price) / buy_price if buy_price!=None else 0
         if price < rmf_lower and rmf < rmf_threshold:
-            if dca_counter < len(dca_levels):
-                dca_counter += 1
+            if dca_counter == 0:
                 actions.append('Buy')
+                dca_counter += 1
+                buy_price = price   # 매수가 갱신
+            elif dca_counter > 0 and ror < dca:
+                actions.append('Buy')
+                dca_counter += 1
+                buy_price = price   # 매수가 갱신
             else:
                 actions.append('Stay')
-        elif price > rmf_upper and rmf > 100-rmf_threshold:
-            dca_counter = 0
+        elif price > rmf_upper and rmf > 100-rmf_threshold and ror > mtp:
             actions.append('Sell')
+            dca_counter = 0
+            buy_price = None
         else:
             actions.append('Stay')
     
     data['Action'] = actions
-    return data
+    return data[['Time','Open','High','Low','Close','Volume','Action']]
