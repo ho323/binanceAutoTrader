@@ -256,16 +256,16 @@ def strategy_toress(df):
 
 def strategy_vwma_long(df, length=14, change_percentage=1.4, below=55, above=100):
     """
-    VWMA 현물 15분봉 전략 v2
+    VWMA 현물 15분봉 전략
 
-    change_percentage: SRP %
+    change_percentage: SRP
     below, above: RMF 임계값
 
-    매수 조건: VWMA 밴드 하단 아래, RMF 입력한 임계값 아래
-    매도 조건: VWMA 밴드 상단 위, RMF 입력한 임계값 위
+    매수 조건: VWMA 밴드 하단 아래, RMF 임계값 아래
+    매도 조건: VWMA 밴드 상단 위, RMF 임계값 위
     """
     length = 14
-    change_percentage = 1.4 # SRP
+    change_percentage = 1.4
 
     core = get_vwma(df, length)
     vwma_above = core * (1 + (change_percentage / 100))

@@ -61,7 +61,6 @@ def DCABackTest(data,start_balance=10000.0,fee=0.0005,dca=-0.02,dca_levels=[0.3,
     print(f"매수 횟수: {buy_pur}번")
     print(f"매도 횟수: {sell_pur}번")
     print(f"매매 최고 수익률: {round(max(data['현재수익률']),3)}%")
-    print(f"매매 평균 수익률: {round((sum(ar)/len(ar))*100,3)}%")
     print(f"MDD: {round(min(data['현재수익률']),3)}%")
     print(f"최저 수익률: {round(min(data['총수익률']),3)}%")
     print(f"최고 수익률: {round(max(data['총수익률']),3)}%")
