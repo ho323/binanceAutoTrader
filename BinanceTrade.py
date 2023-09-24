@@ -9,7 +9,7 @@ import yaml
 def send_message(DISCORD_WEBHOOK_URL, msg):
     """디스코드 메세지 전송"""
     now = datetime.datetime.now()
-    message = {"content": f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] {str(msg)}"}
+    message = {"content": f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] \n{str(msg)}"}
     requests.post(DISCORD_WEBHOOK_URL, data=message)
     print(message)
 
@@ -89,7 +89,6 @@ def get_all_ohlcv(symbol="BTCUSDT", interval="1d", start_date=datetime.datetime(
     # Print the DataFrame with the OHLCV data
     return df
 
-
 def get_heikinashi(df):
     x = pd.DataFrame()
     x['Time'] = df['Time']
@@ -122,16 +121,16 @@ def get_ema(df, n=20):
     x.index = df.index
     return x
 
-def get_rsi(df, periods=14):
+def get_rsi(data, period=14):
     """RSI 조회"""
-    x = pd.DataFrame()
-    x['변화량'] = df['Close'] - df['Close'].shift(1)
-    x['상승폭'] = np.where(x['변화량']>=0, x['변화량'], 0)
-    x['하락폭'] = np.where(x['변화량'] <0, x['변화량'].abs(), 0)
-    x['AU'] = x['상승폭'].ewm(alpha=1/periods, min_periods=periods).mean()
-    x['AD'] = x['하락폭'].ewm(alpha=1/periods, min_periods=periods).mean()
-    x['RSI'] = x['AU'] / (x['AU'] + x['AD']) * 100
-    return x['RSI']
+    delta = data['Close'].diff(1)
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.rolling(window=period).mean()
+    avg_loss = loss.rolling(window=period).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
 
 def get_macd(df, macd_short=12, macd_long=26, macd_signal=9):
     """MACD 조회"""
@@ -225,14 +224,14 @@ def ma_cross(df,s=20,l=120):
             x.loc[c, 'Cross'] = 'D'
     return x['Cross']
 
-def breakout_strategy(df, k=0.5):
+def strategy_breakout(df, k=0.5):
     """변동성 돌파 기본 전략"""
     x = pd.DataFrame()
     x['Range'] = (df['High'] - df['Close']).shift(1)
     x['Target Price'] = df['Open'] + x['Range'] * k
     return x['Target Price']
 
-def heikinashi_upswing_strategy(df,s=13,l=21):
+def strategy_heikinashi_upswing(df,s=13,l=21):
     """하이킨아시 업스윙 전략"""
     x = get_heikinashi(df)
     x['Cross'] = ma_cross(x,s,l)
@@ -241,94 +240,44 @@ def heikinashi_upswing_strategy(df,s=13,l=21):
     for i in range(len(df)):
         t = x.index[i]
         if x.loc[t,'UD']=='Up' and x.loc[t,'Cross']=='G':
-            x.loc[t,'Action'] = 'Buy'
+            x.loc[t,'Action'] = 'Long'
         elif x.loc[t,'UD']=='Down' and x.loc[t,'Cross']=='D':
-            x.loc[t,'Action'] = 'Sell'
+            x.loc[t,'Action'] = 'Short'
     return x
 
 
-def grid_strategy(df):
+def strategy_grid(df):
     """그리드 현물매매 전략"""
     pass
 
-def torres_strategy(df):
+def strategy_toress(df):
     """토레스 전략"""
     pass
 
-def vwma_long_strategy(df, length=14, change_percentage=1.4, below=25, above=80):
+def strategy_vwma_long(df, length=14, change_percentage=1.4, below=55, above=100):
     """
-    현물에서 유효한 전략
-    쌀 때 사서 비쌀 때 파는 컨셉 
+    VWMA 현물 15분봉 전략 v2
+
     change_percentage: SRP %
     below, above: RMF 임계값
-    
+
     매수 조건: VWMA 밴드 하단 아래, RMF 입력한 임계값 아래
     매도 조건: VWMA 밴드 상단 위, RMF 입력한 임계값 위
     """
     length = 14
-    change_percentage = 1.4 # SRP %
+    change_percentage = 1.4 # SRP
 
     core = get_vwma(df, length)
     vwma_above = core * (1 + (change_percentage / 100))
     vwma_below = core * (1 - (change_percentage / 100))
 
-    up = get_rma([max(change, 0) for change in get_change(df['Close'])], 7)
-    down = get_rma([min(change, 0)*-1 for change in get_change(df['Close'])], 7)
-    rsi = [None if down[i] is None else 100 if down[i] == 0 else 0 if up[i] == 0 else 100 - (100 / (1 + up[i] / down[i])) for i in range(len(up))]
+    rsi = get_rsi(df, 7)
     mfi = get_mfi(df, 7)
-    rmf = [None if rsi[i] is None else abs((rsi[i] + mfi[i])/2) for i in range(len(rsi))]
-
+    rmf = [None if rsi[i] is None else abs(rsi[i] + (mfi[i]/2)) for i in range(len(rsi))]
+    
     df['RMF'] = rmf
     df['Action'] = 'Stay'
     df.loc[(df['Low'] <= vwma_below) & (df['RMF'] < below), 'Action'] = 'Long'
     df.loc[(df['High'] >= vwma_above) & (df['RMF'] > above), 'Action'] = 'Short'
 
-    return df[['Time','Open','High','Low','Close','Volume','Action']]
-
-def srp_strategy(data, rmf_threshold=30, std_dev=2, dca=-0.02, stl=-0.05, mtp=0.02):
-    """
-    매수 조건: VWMA 밴드 하단 아래, RMF 입력한 지정값 아래
-    매도 조건: VWMA 밴드 상단 위, RMF 입력한 지정값 위
-    DCA 접근 방식: 1차, 2차, 3차 분할매수 후 전량매도 (분할매수 지점은 매수가 대비 -3% 지점)
-    rmf_threshold: RMF 지정임계값
-    std_dev: 표준 편차 값 (상단 및 하단 밴드의 폭을 결정)
-    dca: 추가매수시 직전 매수가 대비 수익률
-    stl: Stop Loss
-    mtp: Min Take Profit 매도시 최소 수익률    
-    """
-    data['VWMA'] = get_vwma(data)
-    data['RMF'] = get_rmf(data)
-    data['Upper_Band'] = data['VWMA'] + (std_dev * data['VWMA'].rolling(window=14).std())
-    data['Lower_Band'] = data['VWMA'] - (std_dev * data['VWMA'].rolling(window=14).std())
-
-    actions = []
-    dca_counter = 0  # DCA 수행 횟수
-    buy_price = None    # 직전 매수가
-    ror = 0
-    for index, row in data.iterrows():
-        price = row['Close']
-        vwma = row['VWMA']
-        rmf = row['RMF']
-        rmf_upper = row['Upper_Band']
-        rmf_lower = row['Lower_Band']
-        ror = (price-buy_price) / buy_price if buy_price!=None else 0
-        if price < rmf_lower and rmf < rmf_threshold:
-            if dca_counter == 0:
-                actions.append('Buy')
-                dca_counter += 1
-                buy_price = price   # 매수가 갱신
-            elif dca_counter > 0 and ror < dca:
-                actions.append('Buy')
-                dca_counter += 1
-                buy_price = price   # 매수가 갱신
-            else:
-                actions.append('Stay')
-        elif price > rmf_upper and rmf > 100-rmf_threshold and ror > mtp:
-            actions.append('Sell')
-            dca_counter = 0
-            buy_price = None
-        else:
-            actions.append('Stay')
-    
-    data['Action'] = actions
-    return data[['Time','Open','High','Low','Close','Volume','Action']]
+    return df
