@@ -4,6 +4,7 @@ import numpy as np
 import requests
 import datetime
 import yaml
+import talib.abstract as ta
 
 # 유틸 함수
 def send_message(DISCORD_WEBHOOK_URL, msg):
@@ -105,6 +106,28 @@ def get_heikinashi(df):
     return x
 
 # 보조지표
+def get_basic_indicator(df):
+    """
+    많이 사용하는 보조지표
+    SMA, RSI, MACD
+    """
+    df['MA5'] = ta.SMA(df['Close'], timeperiod=5)
+    df['MA10'] = ta.SMA(df['Close'], timeperiod=10)
+    df['MA20'] = ta.SMA(df['Close'], timeperiod=20)
+    df['MA60'] = ta.SMA(df['Close'], timeperiod=60)
+    df['MA120'] = ta.SMA(df['Close'], timeperiod=120)
+    df['MA240'] = ta.SMA(df['Close'], timeperiod=240)
+
+    macd, signal, oscillator = ta.MACD(df['Close'], fastperiod=12, slowperiod=26, signalperiod=9)
+    df['MACD'] = macd
+    df['Signal'] = signal
+    df['MACD Osc'] = oscillator
+    
+    mfi = ta.MFI(df['High'], df['Low'], df['Close'], df['Volume'], timeperiod=14)
+    df['MFI'] = mfi
+
+    return df
+
 def get_ma(df, n=20):
     """이동 평균선 조회"""
     return df['Close'].rolling(n).mean()
@@ -197,10 +220,6 @@ def get_mfi(data, period=14):
     mfi = 100 - (100 / (1 + money_ratio))
     
     return mfi
-
-def get_rmf(data):
-    """RMF 계산"""
-    return (get_rsi(data) + get_mfi(data)) / 2
 
 def get_vwma(data, period=14):
     """VWMA 계산"""
