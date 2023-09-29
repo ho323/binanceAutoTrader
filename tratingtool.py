@@ -1,45 +1,10 @@
-from binance.client import Client
 import pandas as pd
 import numpy as np
 import requests
 import datetime
-import yaml
 import talib.abstract as ta
 
 # 유틸 함수
-def send_message(DISCORD_WEBHOOK_URL, msg):
-    """디스코드 메세지 전송"""
-    now = datetime.datetime.now()
-    message = {"content": f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] \n{str(msg)}"}
-    requests.post(DISCORD_WEBHOOK_URL, data=message)
-    print(message)
-
-def get_balance(client, asset='USDT'):
-    """잔고 조회"""    
-    balances = client.get_asset_balance(asset=asset)
-    if balances['free'] is not None:
-        return balances['free']+' USDT'
-    else:
-        return 0
-
-def get_current_price(client, symbol="BTCUSDT"):
-    """현재가 조회"""
-    return client.get_symbol_ticker(symbol=symbol)['price']
-
-def get_ohlcv(client, ticker="BTCUSDT", interval="1d",limit=100):
-    data = client.get_historical_klines(
-        symbol=ticker,
-        interval=interval,
-        limit=limit
-    )
-    colums = ['Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 'Quote asset volume', 'Number of trades', 'Taker buy base asset volume', 'Taker buy quote asset volume', 'Ignore']
-    df = pd.DataFrame(data, columns=colums)
-    df = df[['Time', 'Open', 'High', 'Low', 'Close', 'Volume']]
-    df = df.astype('float')
-    df['Time'] = pd.to_datetime(df['Time'], unit='ms')
-    # df.set_index('Time', inplace=True)
-    return df
-
 def get_all_ohlcv(symbol="BTCUSDT", interval="1d", start_date=datetime.datetime(2017,1,1), end_date=datetime.datetime.now()):
     """
     모든 OHLCV 읽기
@@ -283,9 +248,6 @@ def strategy_vwma_long(df, length=14, change_percentage=1.4, below=55, above=100
     매수 조건: VWMA 밴드 하단 아래, RMF 임계값 아래
     매도 조건: VWMA 밴드 상단 위, RMF 임계값 위
     """
-    length = 14
-    change_percentage = 1.4
-
     core = get_vwma(df, length)
     vwma_above = core * (1 + (change_percentage / 100))
     vwma_below = core * (1 - (change_percentage / 100))
