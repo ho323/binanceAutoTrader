@@ -4,8 +4,7 @@ from discord.ext import commands
 from binance.client import Client
 import yaml
 import time
-# from BinanceTrade import *
-# from binance.exceptions import BinanceAPIException
+from binancebot import BinanceBot
 
 with open('/Users/ho/Documents/config.yaml', encoding='UTF-8') as f:
     _cfg = yaml.load(f, Loader=yaml.FullLoader)
